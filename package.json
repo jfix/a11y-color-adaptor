@@ -1,17 +1,20 @@
 {
   "name": "a11y-color-adaptor",
   "version": "1.0.0",
-  "description": "",
+  "description": "Make sure a colour pair has enough contrast to pass W3C AA requirements",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "ava --watch"
   },
   "keywords": [],
-  "author": "",
+  "author": "Jakob Fix <jakob.fix@gmail.com>",
   "license": "ISC",
   "dependencies": {
     "chalk": "^5.0.0",
     "color": "^4.1.0"
+  },
+  "devDependencies": {
+    "ava": "^3.15.0"
   }
 }

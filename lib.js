@@ -1,5 +1,6 @@
 import Color from 'color';
 import chalk from 'chalk';
+
 const log = console.log;
 
 const getSmallerColor = (c1, c2) => {
@@ -16,21 +17,23 @@ const hexSubtract = (c1, c2) => {
 }
 const rgbAdd = (rgb, value) => {
     try {
-        
+        if (rgb.r + value >= 255 || rgb.g + value >= 255 || rgb.b + value >= 255) {
+            throw new Error('ERR_OUT_OF_BOUNDS');
+        }
         return {
             r: rgb.r + value,
             g: rgb.g + value,
             b: rgb.b + value
         }
     } catch(e) {
-        throw Error(e);
+        throw(e);
     }
 };
 
 const rgbSubtract = (rgb, value) => {
     try {
         if (rgb.r - value <= 0 || rgb.g - value <= 0 || rgb.b - value <= 0) {
-            throw Error(`Minimal value found, cannot subtract further: ${JSON.stringify(rgb)}`)
+            throw new Error('ERR_OUT_OF_BOUNDS');
         }
         return {
             r: rgb.r - value,
@@ -38,7 +41,7 @@ const rgbSubtract = (rgb, value) => {
             b: rgb.b - value
         }
     } catch(e) {
-        throw e;
+        throw(e);
     }
 };
 
@@ -79,7 +82,7 @@ const selectColorToChange = (color1, color2) => {
 const colorLog = (i, bg, fg, contrast) => {
     log(
         chalk.bgHex(bg).hex(fg)
-            .visible(`${i.toString().padStart(3, '0')} contrast: ${contrast} colorToChange before: ${bg}`)
+            .visible(`#${i.toString().padStart(3, '0')} contrast: ${contrast.toFixed(1)} otherColor: ${fg} colorToChange: ${bg}`)
     );
 };
 
@@ -88,50 +91,82 @@ const contrastNormal = 4.5;
 const contrastBig = 3;
 const knownContrasts = [contrastNormal, contrastBig];
 const step = 1;
+const maxChanges = 1;
+let changeDirection = 0;
 
+const changeColor = (colorToChange, otherColor, contrast, contrastLevel, operation) => {
+    const originalColorToChange = colorToChange;
+    const originalOtherColor = otherColor;
+    const originalOperation = operation;
+    const originalContrast = contrast;
+    try {
+        // change colors to achieve sufficient contrast
+        let iteration = 0;
+        colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
+        while (contrast < contrastLevel) {
+            colorToChange = operation == 'subtract'
+                ? Color(rgbSubtract(colorToChange.object(), step))
+                : Color(rgbAdd(colorToChange.object(), step));
+            contrast = parseFloat(colorToChange.contrast(otherColor).toFixed(1));
+            if (iteration > 255) throw Error(`Too many iterations`);
+            iteration++;
+            if (iteration % 5 === 0) colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
+        }
+        colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
+
+        return {
+            colorToChange,
+            otherColor,
+            contrast,
+            step,
+            operation,
+            iteration,
+        }
+    } catch(e) {
+        log(`Error in changeColor: ${e.message}`);
+        if (e.message === 'ERR_OUT_OF_BOUNDS') {
+            if (changeDirection >= maxChanges) throw new Error('Max direction changes reached, abandoning ...');
+            changeDirection++;
+            log(`Error ${e}, relaunching changeColor with other color`);
+            changeColor(originalOtherColor, originalColorToChange, originalContrast, contrastLevel, originalOperation == 'subtract' ? 'add' : 'subtract');
+        } else {
+            log(`Error ${e}, quitting ...`);
+            process.exit(1);
+        }
+    }
+}
 ////////////////////////////////////////////////
 const adaptColors = (c1, c2, contrastLevel) => {
     const color1 = Color(c1);
     const color2 = Color(c2);
 
-    log(`\n`);
-
     if (!contrastLevel) contrastLevel = contrastNormal;
     if (!(knownContrasts.includes(contrastLevel))) contrastLevel = contrastNormal;
 
     // check contrast is not already sufficient
-    let contrast = color1.contrast(color2).toFixed(1);
-    if (contrast >= contrastLevel) 
-    {
+    let contrast = parseFloat(color1.contrast(color2).toFixed(1));
+    if (contrast >= contrastLevel) {
         log(`no need to adapt as contrast is ${contrast}`);
-        return {
-            original: { color1: color1.hex(), color2: color2.hex() },
-        }
+        return { 
+            original: { 
+                color1: color1.hex(), 
+                color2: color2.hex() 
+            },
+            contrast,
+        };
     }
-
     // decide which color to change
     let { colorToChange, otherColor, operation } = selectColorToChange(color1, color2);
 
-    // change colors to achieve sufficient contrast
-    let iteration = 0;
-    colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
-    while (contrast < contrastLevel) {
-        colorToChange = operation == 'subtract'
-            ? Color(rgbSubtract(colorToChange.object(), step))
-            : Color(rgbAdd(colorToChange.object(), step));
-        contrast = colorToChange.contrast(otherColor).toFixed(1);
-        if (iteration > 255) throw Error(`Too many iterations`);
-        iteration++;
-        colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
-    }
-    colorLog(iteration, colorToChange.hex(), otherColor.hex(), contrast);
+    // change color
+    const res = changeColor(colorToChange, otherColor, contrast, contrastLevel, operation);
 
     // prepare result object
     const adapted = { color1: color1.hex(), color2: color2.hex() };
-    if (color1.hex() == otherColor.hex()) {
-        adapted.color2 = colorToChange.hex();
+    if (color1.hex() == res.otherColor.hex()) {
+        adapted.color2 = res.colorToChange.hex();
     } else {
-        adapted.color1 = colorToChange.hex();
+        adapted.color1 = res.colorToChange.hex();
     }
 
     return {
@@ -139,7 +174,11 @@ const adaptColors = (c1, c2, contrastLevel) => {
             color1: color1.hex(),
             color2: color2.hex()
         },
-        adapted
+        adapted,
+        operation: res.operation,
+        iterations: res.iteration,
+        contrast: res.contrast,
+        step: res.step,
     }
 };
 
