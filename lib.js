@@ -17,13 +17,14 @@ const hexSubtract = (c1, c2) => {
 }
 const rgbAdd = (rgb, value) => {
     try {
-        if (rgb.r + value >= 255 || rgb.g + value >= 255 || rgb.b + value >= 255) {
+        if (rgb.r + value > 255 && rgb.g + value > 255 && rgb.b + value > 255) {
+            log(`rgb: ${JSON.stringify(rgb)}`);
             throw new Error('ERR_OUT_OF_BOUNDS');
         }
         return {
-            r: rgb.r + value,
-            g: rgb.g + value,
-            b: rgb.b + value
+            r: rgb.r + value > 255 ? 255 : rgb.r + value,
+            g: rgb.g + value > 255 ? 255 : rgb.g + value,
+            b: rgb.b + value > 255 ? 255 : rgb.b + value
         }
     } catch(e) {
         throw(e);
@@ -32,25 +33,21 @@ const rgbAdd = (rgb, value) => {
 
 const rgbSubtract = (rgb, value) => {
     try {
-        if (rgb.r - value <= 0 || rgb.g - value <= 0 || rgb.b - value <= 0) {
+        if (rgb.r - value < 0 && rgb.g - value < 0 && rgb.b - value < 0) {
+            log(`rgb: ${JSON.stringify(rgb)}`);
             throw new Error('ERR_OUT_OF_BOUNDS');
         }
         return {
-            r: rgb.r - value,
-            g: rgb.g - value,
-            b: rgb.b - value
+            r: rgb.r - value < 0 ? 0 : rgb.r - value,
+            g: rgb.g - value < 0 ? 0 : rgb.g - value,
+            b: rgb.b - value < 0 ? 0 : rgb.b - value
         }
     } catch(e) {
         throw(e);
     }
 };
 
-/**
- * 
- * c1 > c2  => 1
- * c1 < c2  => -1
- * c1 == c2 => 0
- */
+// compare two values, as usual. c1 > c2 => 1, c1 < c2 => -1, c1 == c2 => 0
  const hexCompare = (c1, c2) => {
     c1 = c1.startsWith('#') ? c1.substring(1) : c1
     c2 = c2.startsWith('#') ? c2.substring(1) : c2
@@ -92,7 +89,7 @@ const contrastBig = 3;
 const knownContrasts = [contrastNormal, contrastBig];
 const step = 1;
 const maxChanges = 1;
-let changeDirection = 0;
+let hasChangedSense = false;
 
 const changeColor = (colorToChange, otherColor, contrast, contrastLevel, operation) => {
     const originalColorToChange = colorToChange;
@@ -125,16 +122,18 @@ const changeColor = (colorToChange, otherColor, contrast, contrastLevel, operati
     } catch(e) {
         log(`Error in changeColor: ${e.message}`);
         if (e.message === 'ERR_OUT_OF_BOUNDS') {
-            if (changeDirection >= maxChanges) throw new Error('Max direction changes reached, abandoning ...');
-            changeDirection++;
-            log(`Error ${e}, relaunching changeColor with other color`);
-            changeColor(originalOtherColor, originalColorToChange, originalContrast, contrastLevel, originalOperation == 'subtract' ? 'add' : 'subtract');
+            if (hasChangedSense) throw new Error('Already changed sense once, abandoning ...');
+            hasChangedSense = true;
+            log(`Relaunching changeColor with other color`);
+            const res = changeColor(originalOtherColor, originalColorToChange, originalContrast, contrastLevel, originalOperation == 'subtract' ? 'add' : 'subtract');
+            return res;
         } else {
             log(`Error ${e}, quitting ...`);
             process.exit(1);
         }
     }
 }
+
 ////////////////////////////////////////////////
 const adaptColors = (c1, c2, contrastLevel) => {
     const color1 = Color(c1);
